@@ -1,0 +1,8 @@
+/node_modules
+/.yarn
+/midnight-level-db
+/logs
+/.docker
+/contract/managed
+/.midnight-expert
+.env.preprod
