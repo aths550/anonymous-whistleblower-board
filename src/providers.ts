@@ -22,19 +22,19 @@ import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-pri
 import { type MidnightWalletProvider } from './wallet.js';
 import { type NetworkConfig } from './config.js';
 
-export type BattleshipCircuits = 'acceptGame' | 'player1Shoot' | 'checkBoard1' | 'player2Shoot' | 'checkBoard2';
+export type WhistleblowerCircuits = 'registerAuthority' | 'submitReport' | 'getReportCount' | 'discloseReport';
 
-export type BattleshipProviders = MidnightProviders<any>;
+export type WhistleblowerProviders = MidnightProviders<any>;
 
 export function buildProviders(
     wallet: MidnightWalletProvider,
     zkConfigPath: string,
     config: NetworkConfig,
-): BattleshipProviders {
-    const zkConfigProvider = new NodeZkConfigProvider<BattleshipCircuits>(zkConfigPath);
+): WhistleblowerProviders {
+    const zkConfigProvider = new NodeZkConfigProvider<WhistleblowerCircuits>(zkConfigPath);
     return {
         privateStateProvider: levelPrivateStateProvider({
-            privateStateStoreName: `battleship-${Date.now()}`,
+            privateStateStoreName: `whistleblower-${Date.now()}`, // was battleship-Test-Password
             // this password has requirements (capital/special chars >= 3)
             privateStoragePasswordProvider: () => 'Battleship-Test-Password',
             accountId: wallet.getCoinPublicKey(),
