@@ -1,0 +1,41 @@
+pragma language_version >= 0.13.0;
+
+import CompactStandardLibrary;
+
+export ledger reportCount: Counter;
+export ledger authorityCommitment: Bytes<32>;
+export ledger reportHashes: Map<Uint<64>, Bytes<32>>;
+export ledger nullifiers: Set<Bytes<32>>;
+export ledger disclosedReports: Map<Uint<64>, Opaque<"string">>;
+
+export circuit registerAuthority(commitment: Bytes<32>): [] {
+  authorityCommitment = disclose(commitment);
+}
+
+export circuit submitReport(
+  secretIdentity: Bytes<32>,
+  reportHash: Bytes<32>
+): [] {
+  const nullifier = persistentHash<Bytes<32>>(disclose(secretIdentity));
+  assert(!nullifiers.member(nullifier), "report already submitted by this identity");
+  const derivedCommitment = persistentHash<Bytes<32>>(disclose(secretIdentity));
+  assert(derivedCommitment == authorityCommitment, "identity not authorized");
+  nullifiers.insert(disclose(nullifier));
+  const id = reportCount.read();
+  reportHashes.insert(disclose(id), disclose(reportHash));
+  reportCount.increment(1);
+}
+
+export circuit getReportCount(): [Uint<64>] {
+  return [reportCount.read()];
+}
+
+export circuit discloseReport(
+  reportId: Uint<64>,
+  secretIdentity: Bytes<32>,
+  reportContent: Opaque<"string">
+): [] {
+  const nullifier = persistentHash<Bytes<32>>(disclose(secretIdentity));
+  assert(nullifiers.member(nullifier), "no matching report for this identity");
+  disclosedReports.insert(disclose(reportId), disclose(reportContent));
+}
