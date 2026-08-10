@@ -5,7 +5,7 @@ import { submitCallTx, deployContract } from '@midnight-ntwrk/midnight-js-contra
 import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import type { ContractAddress } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import { type EnvironmentConfiguration, waitForFunds } from '@midnight-ntwrk/testkit-js';
-import { persistentHash, CompactTypeBytes } from '@midnight-ntwrk/compact-runtime';
+import { buildMerkleTree, getMerkleProof, hashLeaf } from '../merkle.js';
 import { getConfig } from '../config.js';
 import { MidnightWalletProvider, syncWallet, type WalletSecret } from '../wallet.js';
 import { buildProviders, type WhistleblowerProviders } from '../providers.js';
@@ -66,11 +66,6 @@ const logger = pino({
 
 const network = process.env['MIDNIGHT_NETWORK'] ?? 'local';
 
-const bytes32Type = new CompactTypeBytes(32);
-function hashIdentity(secretIdentity: Uint8Array): Uint8Array {
-    return persistentHash(bytes32Type, secretIdentity);
-}
-
 describe(`Anonymous Whistleblower Board via midnight-js (${network})`, () => {
     let adminWallet: MidnightWalletProvider;
     let reporterWallet: MidnightWalletProvider;
@@ -88,7 +83,16 @@ describe(`Anonymous Whistleblower Board via midnight-js (${network})`, () => {
 
     const secretIdentity = randomBytes(32);
     const wrongIdentity = randomBytes(32);
-    const authorityCommitment = hashIdentity(secretIdentity);
+
+    // Authority set = just our one test reporter's identity; buildMerkleTree
+    // zero-pads the remaining leaves up to 2^DEPTH = 256 automatically.
+    const { root: merkleRoot, layers } = buildMerkleTree([secretIdentity]);
+    const { merklePath, pathDirections } = getMerkleProof(layers, 0);
+
+    // Contract computes: leaf = hash(secretIdentity), nullifier = hash(leaf).
+    // Mirror that exactly off-chain — do NOT single-hash here or the
+    // membership assertion below will silently fail against real data.
+    const expectedNullifier = hashLeaf(hashLeaf(secretIdentity));
 
     async function queryLedger(providers: WhistleblowerProviders) {
         const state = await providers.publicDataProvider.queryContractState(contractAddress);
@@ -157,17 +161,17 @@ describe(`Anonymous Whistleblower Board via midnight-js (${network})`, () => {
         expect(state.reportCount).toEqual(0n);
     });
 
-    it('registers the authority commitment', async () => {
-        await (submitCallTx<Contract, 'registerAuthority'>)(adminProviders, {
+    it('registers the authority merkle root', async () => {
+        await (submitCallTx<Contract, 'updateAuthorityRoot'>)(adminProviders, {
             compiledContract: CompiledWhistleblowerContract,
             contractAddress,
             privateStateId: ADMIN_PRIVATE_ID,
-            circuitId: 'registerAuthority',
-            args: [authorityCommitment],
+            circuitId: 'updateAuthorityRoot',
+            args: [merkleRoot],
         });
 
         const state = await queryLedger(adminProviders);
-        expect(state.authorityCommitment).toEqual(authorityCommitment);
+        expect(state.merkleRoot).toEqual(merkleRoot);
     });
 
     it('allows an authorized identity to submit a report, exposing only the nullifier', async () => {
@@ -184,14 +188,12 @@ describe(`Anonymous Whistleblower Board via midnight-js (${network})`, () => {
             contractAddress,
             privateStateId: REPORTER_PRIVATE_ID,
             circuitId: 'submitReport',
-            args: [secretIdentity, reportHash],
+            args: [secretIdentity, merklePath, pathDirections, reportHash],
         });
 
         const state = await queryLedger(reporterProviders);
         expect(state.reportCount).toEqual(1n);
-
-        const nullifier = hashIdentity(secretIdentity);
-        expect(state.nullifiers.member(nullifier)).toBeTruthy();
+        expect(state.nullifiers.member(expectedNullifier)).toBeTruthy();
 
         const stateJson = JSON.stringify(state, (_key, value) =>
             value instanceof Uint8Array ? Buffer.from(value).toString('hex') : value,
@@ -207,7 +209,7 @@ describe(`Anonymous Whistleblower Board via midnight-js (${network})`, () => {
                 contractAddress,
                 privateStateId: REPORTER_PRIVATE_ID,
                 circuitId: 'submitReport',
-                args: [secretIdentity, reportHash],
+                args: [secretIdentity, merklePath, pathDirections, reportHash],
             });
         }).rejects.toThrow();
     });
@@ -215,12 +217,17 @@ describe(`Anonymous Whistleblower Board via midnight-js (${network})`, () => {
     it('rejects submission from an unauthorized identity', async () => {
         const reportHash = randomBytes(32);
         await expect(async () => {
+            // Reuse the valid proof's structure but swap in an identity that
+            // was never included when the tree was built. The path/directions
+            // are only "shaped" correctly — the circuit's root-equality
+            // assertion will fail because wrongIdentity hashes to a leaf
+            // that doesn't match what this path was built for.
             await (submitCallTx<Contract, 'submitReport'>)(reporterProviders, {
                 compiledContract: CompiledWhistleblowerContract,
                 contractAddress,
                 privateStateId: REPORTER_PRIVATE_ID,
                 circuitId: 'submitReport',
-                args: [wrongIdentity, reportHash],
+                args: [wrongIdentity, merklePath, pathDirections, reportHash],
             });
         }).rejects.toThrow();
     });

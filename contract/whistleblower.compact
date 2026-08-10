@@ -2,24 +2,53 @@ pragma language_version >= 0.13.0;
 
 import CompactStandardLibrary;
 
+export ledger merkleRoot: Bytes<32>;
 export ledger reportCount: Counter;
-export ledger authorityCommitment: Bytes<32>;
 export ledger reportHashes: Map<Uint<64>, Bytes<32>>;
 export ledger nullifiers: Set<Bytes<32>>;
 export ledger disclosedReports: Map<Uint<64>, Opaque<"string">>;
 
-export circuit registerAuthority(commitment: Bytes<32>): [] {
-  authorityCommitment = disclose(commitment);
+export circuit updateAuthorityRoot(newRoot: Bytes<32>): [] {
+  merkleRoot = disclose(newRoot);
 }
 
 export circuit submitReport(
   secretIdentity: Bytes<32>,
+  merklePath: Vector<8, Bytes<32>>,
+  pathDirections: Vector<8, Boolean>,
   reportHash: Bytes<32>
 ): [] {
-  const nullifier = persistentHash<Bytes<32>>(disclose(secretIdentity));
-  assert(!nullifiers.member(nullifier), "report already submitted by this identity");
-  const derivedCommitment = persistentHash<Bytes<32>>(disclose(secretIdentity));
-  assert(derivedCommitment == authorityCommitment, "identity not authorized");
+  const leaf = persistentHash<Bytes<32>>(secretIdentity);
+  const nullifier = persistentHash<Bytes<32>>(leaf);
+
+  const h0 = pathDirections[0]
+    ? persistentHash<[Bytes<32>, Bytes<32>]>([merklePath[0], leaf])
+    : persistentHash<[Bytes<32>, Bytes<32>]>([leaf, merklePath[0]]);
+  const h1 = pathDirections[1]
+    ? persistentHash<[Bytes<32>, Bytes<32>]>([merklePath[1], h0])
+    : persistentHash<[Bytes<32>, Bytes<32>]>([h0, merklePath[1]]);
+  const h2 = pathDirections[2]
+    ? persistentHash<[Bytes<32>, Bytes<32>]>([merklePath[2], h1])
+    : persistentHash<[Bytes<32>, Bytes<32>]>([h1, merklePath[2]]);
+  const h3 = pathDirections[3]
+    ? persistentHash<[Bytes<32>, Bytes<32>]>([merklePath[3], h2])
+    : persistentHash<[Bytes<32>, Bytes<32>]>([h2, merklePath[3]]);
+  const h4 = pathDirections[4]
+    ? persistentHash<[Bytes<32>, Bytes<32>]>([merklePath[4], h3])
+    : persistentHash<[Bytes<32>, Bytes<32>]>([h3, merklePath[4]]);
+  const h5 = pathDirections[5]
+    ? persistentHash<[Bytes<32>, Bytes<32>]>([merklePath[5], h4])
+    : persistentHash<[Bytes<32>, Bytes<32>]>([h4, merklePath[5]]);
+  const h6 = pathDirections[6]
+    ? persistentHash<[Bytes<32>, Bytes<32>]>([merklePath[6], h5])
+    : persistentHash<[Bytes<32>, Bytes<32>]>([h5, merklePath[6]]);
+  const h7 = pathDirections[7]
+    ? persistentHash<[Bytes<32>, Bytes<32>]>([merklePath[7], h6])
+    : persistentHash<[Bytes<32>, Bytes<32>]>([h6, merklePath[7]]);
+
+  assert(h7 == merkleRoot, "identity not in authorized set");
+  assert(!nullifiers.member(disclose(nullifier)), "report already submitted by this identity");
+
   nullifiers.insert(disclose(nullifier));
   const id = reportCount.read();
   reportHashes.insert(disclose(id), disclose(reportHash));
@@ -35,7 +64,8 @@ export circuit discloseReport(
   secretIdentity: Bytes<32>,
   reportContent: Opaque<"string">
 ): [] {
-  const nullifier = persistentHash<Bytes<32>>(disclose(secretIdentity));
-  assert(nullifiers.member(nullifier), "no matching report for this identity");
+  const leaf = persistentHash<Bytes<32>>(secretIdentity);
+  const nullifier = persistentHash<Bytes<32>>(leaf);
+  assert(nullifiers.member(disclose(nullifier)), "no matching report for this identity");
   disclosedReports.insert(disclose(reportId), disclose(reportContent));
 }
