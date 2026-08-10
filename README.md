@@ -1,78 +1,117 @@
-# Anonymous Whistleblower Board (Midnight / Compact)
+# Anonymous Whistleblower Board
 
-A privacy-preserving whistleblower reporting system built on the **Midnight Network** using the **Compact** smart contract language and **midnight-js**.
+Submit reports/tips that are cryptographically verifiable as coming from an "authorized" source, without revealing which one.
 
-Authorized identities can anonymously submit reports:
-- **Zero-Knowledge Membership**: Membership is proven via an 8-level Merkle tree (up to 256 authorized identities) without revealing *which* identity submitted.
+---
+
+## Project Vision
+
+The **Anonymous Whistleblower Board** provides a privacy-preserving whistleblower reporting mechanism built on the **Midnight Network** using the **Compact** smart contract language and zero-knowledge cryptography.
+
+### The Public vs. Private Privacy Guarantee
+> *"An observer can see that report #N was submitted by someone in the authorized set (via zero-knowledge Merkle inclusion proofs), and later (if the reporter chooses) see what it said — but can **NEVER** discover who submitted it, before or after disclosure."*
+
+- **Zero-Knowledge Membership**: Proves identity inclusion in an 8-level Merkle tree (up to 256 authorized members) without disclosing *which* leaf matches.
 - **Sentinel Padding Security**: Empty leaves in the Merkle tree are padded with a domain-separated sentinel leaf (`PADDING_LEAF`), preventing raw/zero-byte identity impersonation.
-- **Nullifier Protection**: A unique nullifier prevents double-submitting while keeping the reporter's secret identity unlinked.
-- **Report Content Hashing & Disclosure**: Reports are hashed off-chain (`hashReportContent`) and recorded on ledger (`reportHashes`). Reporters can later opt to disclose the plaintext content of a specific report (`discloseReport`), which is verified on-chain and against the stored content hash.
-- **Admin Membership Management CLI**: Off-chain admin tooling (`npm run admin:tree`) builds Merkle trees, persists state & proof vectors to JSON, and updates contract authority roots (`updateAuthorityRoot`).
+- **Nullifier Unlinkability**: A spent nullifier set prevents duplicate report submissions without linking back to the reporter's secret identity.
+- **On-Ledger Content Hashing & Opt-In Plaintext Disclosure**: Submissions record SHA-256 report hashes on-ledger (`reportHashes`). Reporters can later opt to disclose plaintext report contents (`discloseReport`), which are verified on-chain against the stored report hash.
 
 ---
 
-## Contract Architecture (`contract/whistleblower.compact`)
+## Smart Contract Deployment
 
-### Ledger State
-- `merkleRoot: Bytes<32>` — commitment to the current authorized identity set
-- `reportCount: Counter` — total number of submitted reports
-- `reportHashes: Map<Uint<64>, Bytes<32>>` — report content hash per report ID
-- `nullifiers: Set<Bytes<32>>` — spent nullifiers preventing duplicate submissions
-- `disclosedReports: Map<Uint<64>, Opaque<"string">>` — disclosed plaintext report contents
-
-### Circuits
-- `updateAuthorityRoot(newRoot: Bytes<32>)`: Admin sets or updates the Merkle tree root.
-- `submitReport(secretIdentity, merklePath, pathDirections, reportHash)`: Proves Merkle tree membership and records report hash & nullifier.
-- `getReportCount()`: Returns total report count.
-- `discloseReport(reportId, secretIdentity, reportContent)`: Discloses report text, verifying report ID existence and matching nullifier.
+- **Network:** Preview (`preview`)
+- **Deployed contract ID:** `[PENDING — run: npm run deploy -- --network preview]` (Faucet funding required on Preview via https://faucet.preview.midnight.network)
+- **Local Devnet Deployment ID:** `0507a72d3e18a804db2c37dbec9a18fa300662d51b34bd9dfaa9dd800bbdfbd1`
 
 ---
 
-## Quickstart & Environment Setup
+## Key Features
+
+1. **Compact Smart Contract (`contract/whistleblower.compact`)**:
+   - `updateAuthorityRoot`: Admin registers or updates the authorized identity Merkle root.
+   - `submitReport`: Submits anonymous reports with ZK inclusion proofs and spent nullifiers.
+   - `getReportCount`: Reads total submitted report count.
+   - `discloseReport`: Opt-in reporter plaintext content disclosure verified on-chain.
+2. **Off-Chain Merkle & Sentinel Padding (`src/merkle.ts`)**:
+   - Matches Compact `persistentHash` byte-for-byte using `@midnight-ntwrk/compact-runtime`.
+   - Domain-separated sentinel padding leaf prevents zero-byte identity impersonation.
+   - SHA-256 report content hashing (`hashReportContent`).
+3. **Admin Membership CLI (`scripts/admin-tree.ts`)**:
+   - Tooling to build Merkle tree state JSON off-chain and submit `updateAuthorityRoot` transactions on-chain.
+4. **React + Vite + TypeScript Frontend (`frontend/`)**:
+   - DApp Connector hook discovering installed Midnight wallet extension (`window.midnight`).
+   - Wallet connection navbar with Preview network badge and error handling.
+   - Anonymous report submission interface with real-time ZK proof generation loading state and **"Proved without revealing your input"** privacy badge.
+   - Indexer-powered report board feed displaying on-ledger report hashes, nullifiers, and disclosed plaintext entries.
+   - `secretIdentity` is strictly handled in transient memory and **NEVER** saved in React state, UI, or console logs.
+
+---
+
+## Future Scope
+
+- **Multi-Authority Threshold Signature Roots**: Supporting multi-sig admin approvals before publishing authority root updates.
+- **Encrypted Legal Communications**: End-to-end encrypted messaging channels between whistleblowers and legal teams using Midnight private state channels.
+- **Dynamic Merkle Subtrees**: Extending Merkle capacity beyond 256 leaves using multi-layer subtrees for enterprise whistleblower programs.
+
+---
+
+## Tech Stack
+
+- **Blockchain & ZK Engine**: Midnight Network (Compact Language v0.16 / Compact Compiler 0.31.1)
+- **Client Libraries**: `midnight-js` (`@midnight-ntwrk/midnight-js-contracts`, `@midnight-ntwrk/compact-runtime`, `@midnight-ntwrk/testkit-js`)
+- **Frontend Framework**: React 18 + TypeScript + Vite + Lucide Icons
+- **Testing & Tooling**: Vitest, Node.js (>=22.0.0), Docker (Midnight Node, Indexer, Proof Server)
+
+---
+
+## Local Development
 
 ### 1. Install Dependencies
 ```bash
 npm install
+npm --prefix frontend install
 ```
 
 ### 2. Compile Contract
-Compiles `contract/whistleblower.compact` to managed TypeScript and ZK circuits:
 ```bash
 npm run compile
 ```
 
 ### 3. Start Local Midnight Devnet
-Starts local node, indexer, and proof server via Docker:
 ```bash
 npm run env:up
 ```
 
 ### 4. Run Test Suite
-Runs the Vitest suite against local devnet:
 ```bash
 npm run test:local
 ```
 
----
-
-## Admin Tooling CLI
-
-Admin CLI script for managing authorized identity sets and updating the contract authority root:
-
+### 5. Launch Frontend Dev Server
 ```bash
-# Build Merkle tree state JSON (default: 3 random identities -> merkle-tree-state.json):
+npm run frontend:dev
+```
+
+### 6. Build Frontend for Production
+```bash
+npm run frontend:build
+```
+
+### 7. Run Admin Merkle CLI Tool
+```bash
+# Build Merkle tree state JSON:
 npm run admin:tree -- --action=build
 
-# Customize identity count and output file:
-IDENTITY_COUNT=5 TREE_OUTPUT=my-tree.json npm run admin:tree -- --action=build
-
-# Update authority root on-chain for a deployed contract:
-CONTRACT_ADDRESS=<address> TREE_FILE=my-tree.json npm run admin:tree -- --action=update
+# Update authority root on-chain:
+CONTRACT_ADDRESS=<address> npm run admin:tree -- --action=update
 ```
 
 ---
 
-## Project History & Version Tags
+## Versions
 
-- `v0.1-single-authority`: Initial version with single trusted authority verifying direct commitment hash.
-- `v0.2-merkle-authority`: Upgraded version featuring 8-level Merkle tree membership proofs, sentinel padding security, report content hashing, disclosure verification, and admin CLI tooling.
+- `v0.1-single-authority`: Initial single trusted authority version.
+- `v0.2-merkle-authority`: Merkle-tree membership proofs (8-level tree, up to 256 identities).
+- `v0.3-hardened-merkle-admin`: Sentinel padding security, report hash verification, and admin CLI tooling.
+- `v0.4-fullstack-dapp`: React + Vite + TypeScript frontend, DApp connector integration, Preview network support, and contract deploy script.
