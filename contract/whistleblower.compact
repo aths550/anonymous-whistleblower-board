@@ -1,3 +1,23 @@
+// =============================================================================
+// PUBLIC VS PRIVATE DATA STORY:
+//
+// PUBLIC (On-Ledger):
+//   - merkleRoot: Commitment to the authorized identity set (8-level tree / 256 capacity).
+//   - reportCount: Counter tracking total submitted reports.
+//   - reportHashes: Map from report ID to SHA-256 hash of report content.
+//   - nullifiers: Set of spent nullifier hashes preventing double submission.
+//   - disclosedReports: Map from report ID to disclosed plaintext report text.
+//
+// PRIVATE (In-Circuit ZK Witness Inputs):
+//   - secretIdentity: 32-byte secret reporter identity (never written to ledger).
+//   - merklePath: Inclusion proof path in the 8-level Merkle tree.
+//   - pathDirections: Node direction bits along the Merkle tree path.
+//
+// GUARANTEE: An observer can verify that report #N was submitted by an authorized
+// identity, and later see disclosed content, but can NEVER link the report or nullifier
+// back to the reporter's secret identity.
+// =============================================================================
+
 pragma language_version >= 0.13.0;
 
 import CompactStandardLibrary;
