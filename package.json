@@ -1,5 +1,5 @@
 {
-  "name": "battleship",
+  "name": "anonymous-whistleblower-board",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -18,6 +18,9 @@
     "proof:down": "docker compose stop proof-server",
     "wait:dust": "vite-node scripts/wait-for-dust.ts",
     "admin:tree": "vite-node scripts/admin-tree.ts",
+    "deploy": "vite-node scripts/deploy.ts",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build",
     "validate": "yarn env:up && yarn wait:dust && yarn test:local; yarn env:down"
   },
   "dependencies": {

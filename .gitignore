@@ -1,4 +1,6 @@
 /node_modules
+/frontend/node_modules
+/frontend/dist
 /.yarn
 /midnight-level-db
 /logs
@@ -6,3 +8,5 @@
 /contract/managed
 /.midnight-expert
 .env.preprod
+.midnight-state.json
+.midnight-wallet-state/
