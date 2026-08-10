@@ -36,7 +36,7 @@ export function buildProviders(
         privateStateProvider: levelPrivateStateProvider({
             privateStateStoreName: `whistleblower-${Date.now()}`, // was battleship-Test-Password
             // this password has requirements (capital/special chars >= 3)
-            privateStoragePasswordProvider: () => 'Battleship-Test-Password',
+            privateStoragePasswordProvider: () => 'Whistleblower-Test-Password-1',
             accountId: wallet.getCoinPublicKey(),
         }),
         publicDataProvider: indexerPublicDataProvider(
