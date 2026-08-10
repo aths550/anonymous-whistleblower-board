@@ -124,3 +124,8 @@ zkir-lint: scanned 5 file(s)
 ```
 
 This repository is currently only set up to support a local devnet running via Docker. The configurations for other networks and handling of those configs can be set up in `config.ts` and supporting files to enable their operation.
+
+## Versions
+
+- `v0.1-single-authority` — initial version, single trusted authority verifies membership via direct commitment hash
+- `v0.2-merkle-authority` — current version, Merkle-tree membership proofs (8-level tree, up to 256 identities), supports multi-authority membership sets
