@@ -22,7 +22,7 @@ import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-pri
 import { type MidnightWalletProvider } from './wallet.js';
 import { type NetworkConfig } from './config.js';
 
-export type WhistleblowerCircuits = 'registerAuthority' | 'submitReport' | 'getReportCount' | 'discloseReport';
+export type WhistleblowerCircuits = 'updateAuthorityRoot' | 'submitReport' | 'getReportCount' | 'discloseReport';
 
 export type WhistleblowerProviders = MidnightProviders<any>;
 
