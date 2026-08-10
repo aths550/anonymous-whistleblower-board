@@ -67,5 +67,6 @@ export circuit discloseReport(
   const leaf = persistentHash<Bytes<32>>(secretIdentity);
   const nullifier = persistentHash<Bytes<32>>(leaf);
   assert(nullifiers.member(disclose(nullifier)), "no matching report for this identity");
+  assert(reportHashes.member(disclose(reportId)), "report id does not exist");
   disclosedReports.insert(disclose(reportId), disclose(reportContent));
 }

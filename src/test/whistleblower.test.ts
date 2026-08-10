@@ -5,7 +5,8 @@ import { submitCallTx, deployContract } from '@midnight-ntwrk/midnight-js-contra
 import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import type { ContractAddress } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import { type EnvironmentConfiguration, waitForFunds } from '@midnight-ntwrk/testkit-js';
-import { buildMerkleTree, getMerkleProof, hashLeaf } from '../merkle.js';
+import { buildMerkleTree, getMerkleProof, hashLeaf, hashReportContent, PADDING_LEAF } from '../merkle.js';
+import { buildAndPersistTreeState } from '../../scripts/admin-tree.js';
 import { getConfig } from '../config.js';
 import { MidnightWalletProvider, syncWallet, type WalletSecret } from '../wallet.js';
 import { buildProviders, type WhistleblowerProviders } from '../providers.js';
@@ -174,6 +175,9 @@ describe(`Anonymous Whistleblower Board via midnight-js (${network})`, () => {
         expect(state.merkleRoot).toEqual(merkleRoot);
     });
 
+    const testReportContent = 'The Q3 numbers were falsified.';
+    const testReportHash = hashReportContent(testReportContent);
+
     it('allows an authorized identity to submit a report, exposing only the nullifier', async () => {
         reporterProviders.privateStateProvider.setContractAddress(contractAddress);
         await reporterProviders.privateStateProvider.set(
@@ -181,24 +185,38 @@ describe(`Anonymous Whistleblower Board via midnight-js (${network})`, () => {
             createWhistleblowerPrivateState(),
         );
 
-        const reportHash = randomBytes(32);
-
         await (submitCallTx<Contract, 'submitReport'>)(reporterProviders, {
             compiledContract: CompiledWhistleblowerContract,
             contractAddress,
             privateStateId: REPORTER_PRIVATE_ID,
             circuitId: 'submitReport',
-            args: [secretIdentity, merklePath, pathDirections, reportHash],
+            args: [secretIdentity, merklePath, pathDirections, testReportHash],
         });
 
         const state = await queryLedger(reporterProviders);
         expect(state.reportCount).toEqual(1n);
         expect(state.nullifiers.member(expectedNullifier)).toBeTruthy();
+        expect(state.reportHashes.member(0n)).toBeTruthy();
+        expect(state.reportHashes.lookup(0n)).toEqual(testReportHash);
 
         const stateJson = JSON.stringify(state, (_key, value) =>
             value instanceof Uint8Array ? Buffer.from(value).toString('hex') : value,
         );
         expect(stateJson).not.toContain(Buffer.from(secretIdentity).toString('hex'));
+    });
+
+    it('rejects submission from an all-zero identity matching padding slots', async () => {
+        const zeroIdentity = new Uint8Array(32);
+        const dummyHash = randomBytes(32);
+        await expect(async () => {
+            await (submitCallTx<Contract, 'submitReport'>)(reporterProviders, {
+                compiledContract: CompiledWhistleblowerContract,
+                contractAddress,
+                privateStateId: REPORTER_PRIVATE_ID,
+                circuitId: 'submitReport',
+                args: [zeroIdentity, merklePath, pathDirections, dummyHash],
+            });
+        }).rejects.toThrow();
     });
 
     it('rejects a duplicate submission from the same identity', async () => {
@@ -217,11 +235,6 @@ describe(`Anonymous Whistleblower Board via midnight-js (${network})`, () => {
     it('rejects submission from an unauthorized identity', async () => {
         const reportHash = randomBytes(32);
         await expect(async () => {
-            // Reuse the valid proof's structure but swap in an identity that
-            // was never included when the tree was built. The path/directions
-            // are only "shaped" correctly — the circuit's root-equality
-            // assertion will fail because wrongIdentity hashes to a leaf
-            // that doesn't match what this path was built for.
             await (submitCallTx<Contract, 'submitReport'>)(reporterProviders, {
                 compiledContract: CompiledWhistleblowerContract,
                 contractAddress,
@@ -232,18 +245,42 @@ describe(`Anonymous Whistleblower Board via midnight-js (${network})`, () => {
         }).rejects.toThrow();
     });
 
-    it('allows the original reporter to disclose their report content', async () => {
-        const reportContent = 'The Q3 numbers were falsified.';
-
+    it('allows the original reporter to disclose their report content and verifies hash round-trip', async () => {
         await (submitCallTx<Contract, 'discloseReport'>)(reporterProviders, {
             compiledContract: CompiledWhistleblowerContract,
             contractAddress,
             privateStateId: REPORTER_PRIVATE_ID,
             circuitId: 'discloseReport',
-            args: [0n, secretIdentity, reportContent],
+            args: [0n, secretIdentity, testReportContent],
         });
 
         const state = await queryLedger(reporterProviders);
         expect(state.disclosedReports.member(0n)).toBeTruthy();
+        const disclosed = state.disclosedReports.lookup(0n);
+        expect(disclosed).toEqual(testReportContent);
+        const computedHash = hashReportContent(disclosed);
+        const storedHash = state.reportHashes.lookup(0n);
+        expect(computedHash).toEqual(storedHash);
+    });
+
+    it('rejects disclosure for a non-existent report id', async () => {
+        await expect(async () => {
+            await (submitCallTx<Contract, 'discloseReport'>)(reporterProviders, {
+                compiledContract: CompiledWhistleblowerContract,
+                contractAddress,
+                privateStateId: REPORTER_PRIVATE_ID,
+                circuitId: 'discloseReport',
+                args: [999n, secretIdentity, testReportContent],
+            });
+        }).rejects.toThrow();
+    });
+
+    it('builds and persists admin Merkle tree state off-chain', () => {
+        const secHex = Buffer.from(secretIdentity).toString('hex');
+        const state = buildAndPersistTreeState([secHex]);
+        expect(state.count).toEqual(1);
+        expect(state.identities.length).toEqual(1);
+        expect(state.merkleRoot).toEqual(Buffer.from(merkleRoot).toString('hex'));
+        expect(state.identities[0].pathDirections.length).toEqual(8);
     });
 });

@@ -5,11 +5,25 @@
 // no risk of drift.
 
 import { persistentHash, CompactTypeBytes } from '@midnight-ntwrk/compact-runtime';
+import { createHash } from 'node:crypto';
 
 const DEPTH = 8;
 
 // Bytes<32> descriptor — same as _descriptor_2 in the compiled contract.
 const Bytes32 = new CompactTypeBytes(32);
+
+// Domain-separated sentinel secret & padding leaf so padding slots
+// cannot match any real user's secretIdentity (including an all-zero identity).
+const PADDING_SENTINEL_SEED = new TextEncoder().encode('whistleblower:merkle:padding:v1');
+const PADDING_SECRET_BYTES = new Uint8Array(32);
+PADDING_SECRET_BYTES.set(PADDING_SENTINEL_SEED.subarray(0, 32));
+
+export const PADDING_LEAF = persistentHash(Bytes32, PADDING_SECRET_BYTES);
+
+/** Computes 32-byte SHA-256 hash of report content for reportHash parameter */
+export function hashReportContent(reportContent: string): Uint8Array {
+  return new Uint8Array(createHash('sha256').update(reportContent, 'utf-8').digest());
+}
 
 // Tuple<Bytes<32>, Bytes<32>> descriptor — replicates _tuple_1 / _descriptor_8
 // exactly as generated in contract/managed/whistleblower/contract/index.js.
@@ -41,13 +55,8 @@ export function buildMerkleTree(secretIdentities: Uint8Array[]): {
   layers: Uint8Array[][];
 } {
   const leaves = secretIdentities.map(hashLeaf);
-  // Pad to 2^DEPTH with a fixed zero-leaf. NOTE: an all-zero 32-byte input
-  // is itself a valid witness value, so anyone submitting an all-zero
-  // secretIdentity would match a padding slot. For a real deployment,
-  // use a domain-separated padding leaf instead (e.g. hash of a constant
-  // sentinel) rather than raw zeros. Flagging this now so it doesn't slip
-  // through silently.
-  while (leaves.length < 2 ** DEPTH) leaves.push(new Uint8Array(32));
+  // Pad to 2^DEPTH with domain-separated sentinel padding leaf.
+  while (leaves.length < 2 ** DEPTH) leaves.push(PADDING_LEAF);
 
   const layers: Uint8Array[][] = [leaves];
   for (let d = 0; d < DEPTH; d++) {
